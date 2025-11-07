@@ -1,0 +1,1006 @@
+https://docs.google.com/spreadsheets/d/e/2PACX-1vR-ioUhm1_zknjbLxTqDvtSiDSu518gysHYO_W4FnMW73GQZ244hSfbhE81CautEA/pub?output=csv<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Wip FAC - Reporte de Dirección (Dinámico)</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        /* Estilos Base para Reporte de Dirección */
+        body { 
+            font-family: "Bahnschrift SemiLight", Arial, sans-serif; 
+            font-size: 11pt; 
+            margin: 40px; 
+            background: #f4f4f4; 
+            color: #333;
+        }
+        h1 { text-align: center; color: #1E1E1E; }
+        h2 { margin-top: 30px; border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #001D4A; }
+        h3 { color: #444; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: center; }
+        th { background: #e0e0e0; color: #1E1E1E; font-weight: bold; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        
+        /* Estilos de Filtros */
+        select, input[type="file"], button { margin: 10px; padding: 8px; border: 1px solid #aaa; border-radius: 4px; font-size: 10pt; }
+        select#deptoFilter, select#tipoProdFilter { height: 120px; min-width: 250px; } 
+
+        .filters { margin-bottom: 30px; padding: 20px; text-align: center; background: #fff; border-radius: 8px; box-shadow: 0 0 5px rgba(0,0,0,0.05); }
+        
+        /* Contenedor de Gráficos */
+        #chartContainer { 
+            display: flex; 
+            justify-content: space-around;
+            flex-wrap: wrap; 
+            margin: 20px auto; 
+        }
+        
+        .chart-box {
+            width: 472px; 
+            min-width: 470px;
+            height: 520px; 
+            margin: 10px;
+            background: #fff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 0 5px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .chart-box canvas {
+            max-width: 450px !important; 
+            max-height: 450px !important;
+            width: 450px !important;
+            height: 450px !important;
+        }
+        
+        /* Estilo para el Gran Total de las tablas */
+        .grand-total-row td { 
+            font-weight: bold; 
+            background-color: #d3d3d3; 
+        }
+
+        /* ESTILO PARA EL CÍRCULO SEMÁFORO (Pantone) */
+        .color-circle {
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 1px solid #666;
+            vertical-align: middle;
+        }
+        
+        /* Estilos de Botones */
+        #exportPdfButton { background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        #exportExcelButton { background-color: #001D4A; color: white; border: none; cursor: pointer; }
+
+        /* Estilos del Modal de Detalle (Submenu) */
+        .modal {
+            display: none; 
+            position: fixed;
+            z-index: 1000; 
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.7); 
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto; 
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%; 
+            border-radius: 8px;
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover, .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        #detailTable {
+            width: 100%;
+            margin-top: 15px;
+            font-size: 10pt;
+        }
+    </style>
+</head>
+<body>
+    <h1>Wip FAC - Matriz de Productividad</h1>
+
+    <div class="filters" id="contentToExport"> 
+        <div id="loadingStatus">
+            Cargando datos desde Google Sheets...
+        </div>
+        <br>
+        
+        <label>Tipo de Producto (Ctrl/Cmd + Clic para múltiple):
+            <select id="tipoProdFilter" multiple>
+            </select>
+        </label>
+        
+        <label>Departamento (Ctrl/Cmd + Clic para múltiple):
+            <select id="deptoFilter" multiple>
+            </select>
+        </label>
+
+        <br>
+        
+        <div id="selectedDeptosTotal">
+            Suma de Pares Filtrados: 0
+        </div>
+        <br>
+
+        <button id="exportPdfButton">Exportar a PDF 📄</button>
+        <button id="exportExcelButton">Exportar a Excel 📊</button>
+    </div>
+
+    <h2>📊 Resumen de Totales</h2>
+    
+    <h3>Total de Pares por Tipo de Producto</h3>
+    <table id="tipoProdSummaryTable">
+        <thead>
+            <tr><th>Tipo de Producto</th><th>Total de Pares</th></tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="2">Esperando datos de Google Sheets...</td></tr>
+        </tbody>
+        <tfoot></tfoot>
+    </table>
+    
+    <h3>Pares por Departamento (Vertical) y Tipo de Producto (Horizontal)</h3>
+    <table id="combinedSummaryTable">
+        <thead>
+            <tr><td colspan="2">Esperando datos de Google Sheets...</td></tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="2">Esperando datos de Google Sheets...</td></tr>
+        </tbody>
+    </table>
+
+    <div id="chartContainer">
+        <div id="tocColorChartContainer" class="chart-box">
+            <h2>📉 Resumen de Pares por Color (TOC)</h2>
+            <canvas id="tocColorChart"></canvas>
+        </div>
+        
+        <div id="bordadoChartContainer" class="chart-box">
+            <h2>📈 Pares por Bordado (Top 15 Acumulados)</h2>
+            <canvas id="bordadoChart"></canvas>
+        </div>
+    </div>
+    <h2>📜 Detalle (Agrupado)</h2>
+    <table id="recentTable">
+        <thead>
+            <tr><th>Color</th><th>Lista</th><th>Bordado</th><th>Modelo</th><th>Departamento</th><th>Tipo-Prod</th><th>Pares (Suma)</th></tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="7">Esperando datos de Google Sheets...</td></tr>
+        </tbody>
+    </table>
+    
+    <div id="detailModal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Detalle de Lotes - <span id="modalTitle"></span></h3>
+        <table id="detailTable">
+            <thead>
+                <tr><th>Color</th><th>Lista</th><th>Lote</th><th>Departamento</th><th>Bordado</th><th>Pares</th><th>% Penetración</th></tr>
+            </thead>
+            <tbody id="detailTableBody">
+            </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+        const tipoProdSet = new Set(), deptoSet = new Set();
+        let allData = [];
+        let tocColorChartInstance = null; 
+        let bordadoChartInstance = null; 
+        let currentFilteredData = []; 
+        
+        // ** CAMBIE ESTA URL por la URL pública CSV de su Google Sheet **
+        const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTf9A5Xb5C4L2fW7cE8D3H6Y8J5K7I0M1N2P3O4Q5R6S7T8U9V0W1X2Y3Z/pub?gid=0&single=true&output=csv'; // URL de ejemplo.
+
+        // PALETA DE COLORES TOC FIJA (Valores Pantone)
+        const TOC_COLORS = {
+            'ROJO': '#C70039',    
+            'VERDE': '#009F4D',   
+            'AMARILLO': '#FFD100',
+            'AZUL': '#001D4A',    
+            'NEGRO': '#1E1E1E',   
+            'N/A': '#BDC3C7',     
+            'BLANCO': '#F0F0F0',
+            '#BBB': '#BDC3C7'     
+        };
+
+        // Función para normalizar las claves de las columnas, priorizando A y D por índice
+        function normalizeKey(key, index) {
+            if (!key) return key;
+            const cleanKey = String(key).trim().toLowerCase().replace(/\s/g, '');
+            
+            if (cleanKey.includes('pares')) return 'Pares'; 
+            if (cleanKey.includes('penetracion')) return 'Porc Penetracion';
+            if (cleanKey.includes('lote')) return 'Lote'; 
+            if (cleanKey.includes('color') || cleanKey.includes('semaforo')) return 'ColorSemaforo';
+            if (cleanKey.includes('departamento')) return 'Departamento';
+            if (cleanKey.includes('modelo')) return 'Modelo';
+            if (cleanKey.includes('tipo-prod')) return 'TipoProducto'; 
+            
+            // Mapeo por índice para columnas clave: Lista (A=0) y Bordado (D=3)
+            if (index === 0 || cleanKey.includes('lista') || cleanKey.includes('stk')) return 'Lista'; 
+            if (index === 3 || cleanKey.includes('bordado')) return 'Bordado'; 
+            
+            return key; 
+        }
+
+        // ----------------------------------------------------------------------
+        // ** NUEVA FUNCIÓN DE CARGA AUTOMÁTICA DESDE GOOGLE SHEETS **
+        // ----------------------------------------------------------------------
+        function loadDataFromSheet() {
+            document.getElementById('loadingStatus').textContent = "Cargando datos desde Google Sheets...";
+
+            fetch(GOOGLE_SHEET_CSV_URL)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Error ${response.status}: No se pudo obtener el archivo. Revise que la URL de Google Sheets sea correcta y esté publicada como CSV.`);
+                    }
+                    return response.text();
+                })
+                .then(csvText => {
+                    // Convertir CSV a formato JSON usando la librería XLSX
+                    const workbook = XLSX.read(csvText, { type: 'string', raw: true });
+                    const sheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[sheetName];
+                    
+                    let json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    if (json.length === 0) {
+                        throw new Error("El archivo CSV está vacío.");
+                    }
+                    
+                    const headerRow = json[0];
+                    const normalizedHeader = headerRow.map((key, index) => normalizeKey(key, index));
+                    
+                    let processedJson = [];
+
+                    // Lógica de procesamiento de filas
+                    for (let i = 1; i < json.length; i++) {
+                        const row = json[i];
+                        let newRow = {};
+                        let pares = 0;
+                        
+                        for (let j = 0; j < row.length; j++) {
+                            const key = normalizedHeader[j] || headerRow[j];
+                            
+                            if (key === 'Pares') {
+                                pares = parseFloat(row[j]) || 0;
+                            } else if (key === 'Porc Penetracion') {
+                                newRow["Porc Penetracion"] = String(row[j] || '').trim();
+                                newRow["PenetracionNum"] = parseFloat(String(row[j] || '0').replace('%','').trim()) || 0; 
+                            } else if (key === 'ColorSemaforo') {
+                                newRow[key] = String(row[j] || '').trim().toUpperCase() || 'N/A';
+                            } else if (key) {
+                                newRow[key] = row[j];
+                            }
+                        }
+                        
+                        newRow.Pares = pares;
+                        
+                        if (newRow.TipoProducto && newRow.Departamento && newRow.Pares > 0) {
+                            processedJson.push(newRow);
+                        }
+                    }
+                    
+                    allData = processedJson;
+                    
+                    let tipoProdPares = {};
+                    let deptoPares = {};
+                    
+                    allData.forEach(row => {
+                        tipoProdPares[row.TipoProducto] = (tipoProdPares[row.TipoProducto] || 0) + row.Pares;
+                        deptoPares[row.Departamento] = (deptoPares[row.Departamento] || 0) + row.Pares;
+                    });
+                    
+                    updateFilters(allData, tipoProdPares, deptoPares);
+                    renderTables(allData);
+                    document.getElementById('loadingStatus').textContent = "Datos cargados correctamente.";
+
+                })
+                .catch(error => {
+                    console.error('Error al obtener datos:', error);
+                    document.getElementById('loadingStatus').textContent = `ERROR de Carga: ${error.message}`;
+                });
+        }
+        
+        // Ejecutar la carga de datos automáticamente al inicio
+        document.addEventListener('DOMContentLoaded', loadDataFromSheet);
+        // ----------------------------------------------------------------------
+        // ** FIN NUEVA FUNCIÓN DE CARGA AUTOMÁTICA **
+        // ----------------------------------------------------------------------
+
+
+        // Actualiza las opciones de los filtros (solo TipoProd y Depto)
+        function updateFilters(data, tipoProdPares, deptoPares) {
+          tipoProdSet.clear(); 
+          deptoSet.clear(); 
+          
+          data.forEach(row => {
+            if (row.TipoProducto) tipoProdSet.add(row.TipoProducto); 
+            if (row.Departamento) deptoSet.add(row.Departamento); 
+          });
+          
+          populateSelectMultiple("tipoProdFilter", tipoProdSet, tipoProdPares); 
+          populateSelectMultiple("deptoFilter", deptoSet, deptoPares); 
+        }
+
+        // Función para llenar SELECT múltiple (con opción de Total Global)
+        function populateSelectMultiple(id, values, totals) {
+          const select = document.getElementById(id);
+          select.querySelectorAll('option').forEach(option => option.remove());
+          
+          const totalGlobal = Object.values(totals).reduce((a, b) => a + b, 0).toLocaleString('es-MX');
+
+          const optAll = document.createElement("option");
+          optAll.value = "_ALL_TOTAL"; 
+          optAll.textContent = `Total Global (${totalGlobal})`; 
+          select.appendChild(optAll);
+          
+          [...values].sort().forEach(v => {
+            const total = totals[v] ? ` (${totals[v].toLocaleString('es-MX')})` : '';
+            const opt = document.createElement("option");
+            opt.value = v;
+            opt.textContent = `${v}${total}`; 
+            select.appendChild(opt);
+          });
+        }
+
+        // Función principal de filtrado y renderizado
+        function renderTables(data) {
+            const tipoProdTotals = {}; 
+            const matrixData = {}; 
+            const bordadoChartData = {}; 
+            const tocColorChartData = {}; 
+            
+            // --- Lógica de Filtros Múltiples ---
+            const getSelectedValues = (id) => {
+                const select = document.getElementById(id);
+                return Array.from(select.selectedOptions).map(option => option.value.split(' (')[0]).filter(v => v !== "_ALL_TOTAL");
+            };
+
+            const selectedTipoProds = getSelectedValues("tipoProdFilter");
+            const selectedDeptos = getSelectedValues("deptoFilter");
+            
+            const isTipoProdFilterActive = selectedTipoProds.length > 0;
+            const isDeptoFilterActive = selectedDeptos.length > 0;
+            
+            let totalParesDeptosSeleccionados = 0;
+
+            const filtered = data.filter(row => {
+                const matchesTipoProd = !isTipoProdFilterActive || selectedTipoProds.includes(row.TipoProducto);
+                const matchesDepto = !isDeptoFilterActive || selectedDeptos.includes(row.Departamento);
+
+                return matchesTipoProd && matchesDepto; 
+            });
+            
+            currentFilteredData = filtered; 
+            // --- Fin Lógica de Filtros ---
+
+
+            filtered.forEach(row => {
+                const tipoProd = row.TipoProducto; 
+                const depto = row.Departamento;
+                const pares = row.Pares; 
+                const color = row.ColorSemaforo || 'N/A';
+                const bordado = row.Bordado || 'N/A';
+                
+                if (typeof pares === 'number' && !isNaN(pares) && pares > 0) {
+                    
+                    totalParesDeptosSeleccionados += pares;
+
+                    // 1. Datos para Tablas de Resumen
+                    tipoProdTotals[tipoProd] = (tipoProdTotals[tipoProd] || 0) + pares;
+                    
+                    if (!matrixData[depto]) matrixData[depto] = {};
+                    matrixData[depto][tipoProd] = (matrixData[depto][tipoProd] || 0) + pares;
+                    
+                    // 2. Datos para Gráfico 1 (Color TOC)
+                    if (!tocColorChartData[color]) tocColorChartData[color] = { Pares: 0, DetailRows: [] };
+                    tocColorChartData[color].Pares += pares;
+                    tocColorChartData[color].DetailRows.push(row);
+
+                    // 3. Datos para Gráfico 2 (Bordado)
+                    if (!bordadoChartData[bordado]) bordadoChartData[bordado] = { Pares: 0, DetailRows: [] };
+                    bordadoChartData[bordado].Pares += pares;
+                    bordadoChartData[bordado].DetailRows.push(row);
+                }
+            });
+
+            // Ajuste del texto de la suma de totales
+            let totalDisplayText = "Suma de Pares Filtrados: ";
+            if (!isDeptoFilterActive && !isTipoProdFilterActive) {
+                totalDisplayText = "Suma de Pares (Total Global): ";
+            } else if (isDeptoFilterActive && selectedDeptos.length === 1) {
+                totalDisplayText = `Suma de Pares (${selectedDeptos[0]}): `;
+            } else if (isDeptoFilterActive) {
+                 totalDisplayText = `Suma de Pares (${selectedDeptos.length} Deptos Seleccionados): `;
+            }
+             else if (isTipoProdFilterActive) {
+                totalDisplayText = `Suma de Pares (${selectedTipoProds.length} Tipo(s) de Producto Seleccionados): `;
+            }
+
+            document.getElementById('selectedDeptosTotal').textContent = `${totalDisplayText} ${totalParesDeptosSeleccionados.toLocaleString('es-MX')}`;
+
+            // Lógica para modo Detalle (se activa solo si 1 departamento específico fue seleccionado)
+            const deptoForDetailMode = isDeptoFilterActive && selectedDeptos.length === 1 ? selectedDeptos[0] : null;
+
+            // *** Lógica de Detalle/Agrupado ***
+            let detailRows = [];
+            let detailMode = deptoForDetailMode !== null;
+            let detailDepto = deptoForDetailMode;
+
+            if (detailMode) { 
+                const groupedData = {};
+
+                const detailData = filtered.filter(row => row.Departamento === detailDepto);
+                
+                detailData.forEach(row => {
+                    const pares = row.Pares || 0;
+                    if (pares <= 0) return; 
+
+                    // Agrupación CLAVE: Color, Lista, Bordado, Modelo
+                    const key = `${row.ColorSemaforo || 'N/A'}||${row.Lista || 'N/A'}||${row.Bordado || 'N/A'}||${row.Modelo || 'N/A'}`;
+                    
+                    if (!groupedData[key]) {
+                        groupedData[key] = {
+                            ColorSemaforo: row.ColorSemaforo || 'N/A', 
+                            Lista: row.Lista || 'N/A',
+                            Bordado: row.Bordado || 'N/A',
+                            Modelo: row.Modelo || 'N/A', 
+                            Departamento: row.Departamento,
+                            TipoProducto: row.TipoProducto || 'N/A',
+                            Pares: 0,
+                        };
+                    }
+                    groupedData[key].Pares += pares;
+                });
+
+                detailRows = Object.values(groupedData).sort((a, b) => b.Pares - a.Pares);
+
+            } else {
+                // Modo resumen: últimos 5 registros del conjunto filtrado total
+                detailRows = [...filtered].slice(-5).reverse().map(row => ({
+                    ColorSemaforo: row.ColorSemaforo || 'N/A',
+                    Lista: row.Lista || 'N/A',
+                    Bordado: row.Bordado || 'N/A',
+                    Modelo: row.Modelo || 'N/A',
+                    Departamento: row.Departamento || 'N/A',
+                    TipoProducto: row.TipoProducto || 'N/A',
+                    Pares: row.Pares || 0
+                })).filter(row => row.Pares > 0);
+            }
+
+            // Renderizado de Tablas y Gráficos
+            fillSummaryTable("tipoProdSummaryTable", tipoProdTotals, "No hay datos disponibles."); 
+            fillMatrixTable("combinedSummaryTable", matrixData, tipoProdSet, deptoSet, "No hay datos disponibles.");
+            
+            renderTocColorChart(tocColorChartData);
+            renderBordadoChart(bordadoChartData);
+            
+            fillRecentTable("recentTable", detailRows, detailMode, detailDepto);
+        }
+        
+        // Función para mostrar el modal de detalle de lotes
+        function showDetailModal(title, detailRows) {
+            document.getElementById('modalTitle').textContent = title;
+            const tbody = document.getElementById('detailTableBody');
+            tbody.innerHTML = '';
+            
+            detailRows.forEach(row => {
+                const color = row.ColorSemaforo || 'N/A';
+                const lista = row.Lista || '';
+                const lote = row.Lote || '';
+                const depto = row.Departamento || '';
+                const bordado = row.Bordado || '';
+                const pares = row.Pares || 0;
+                const penetracion = row["Porc Penetracion"] || '';
+                
+                const colorCode = TOC_COLORS[color.toUpperCase()] || TOC_COLORS['N/A']; 
+                const colorCircleHtml = `<div class="color-circle" style="background-color: ${colorCode};" title="${color}"></div>`;
+
+                const r = `<tr>
+                               <td>${colorCircleHtml}</td>
+                               <td>${lista || ''}</td>
+                               <td>${lote || ''}</td>
+                               <td>${depto || ''}</td>
+                               <td>${bordado || ''}</td>
+                               <td>${pares.toLocaleString('es-MX')}</td>
+                               <td>${penetracion || ''}</td>
+                           </tr>`;
+                tbody.innerHTML += r;
+            });
+
+            document.getElementById('detailModal').style.display = 'block';
+        }
+
+
+        // Función para renderizar Gráfico Circular de Color TOC (Gráfico 1)
+        function renderTocColorChart(data) {
+            if (tocColorChartInstance) {
+                tocColorChartInstance.destroy();
+            }
+
+            const entries = Object.entries(data).filter(([key, val]) => val.Pares > 0);
+            const labels = entries.map(([key, val]) => `${key} (${val.Pares.toLocaleString('es-MX')})`);
+            const paresData = entries.map(([key, val]) => val.Pares);
+            
+            const colors = entries.map(([key, val]) => {
+                const normalizedKey = key.trim().toUpperCase();
+                return TOC_COLORS[normalizedKey] || TOC_COLORS['N/A'];
+            });
+
+            const ctx = document.getElementById('tocColorChart').getContext('2d');
+            tocColorChartInstance = new Chart(ctx, {
+                type: 'doughnut', 
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: paresData,
+                        backgroundColor: colors, 
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: false, 
+                    maintainAspectRatio: false,
+                    cutout: '50%', 
+                    plugins: {
+                        legend: { 
+                            position: 'right', 
+                            labels: {
+                                boxWidth: 20,
+                                font: { size: 10 }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Pares por Color de % Penetración (TOC)'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label = label.substring(0, label.lastIndexOf(' ('));
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                        label += context.parsed.toLocaleString('es-MX') + ` pares (${percentage}%)`;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const key = entries[index][0];
+                            const detailRows = entries[index][1].DetailRows;
+                            showDetailModal(`Color: ${key}`, detailRows);
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Función para renderizar Gráfico Circular de Bordado (Gráfico 2) - TOP 15
+        function renderBordadoChart(data) {
+            if (bordadoChartInstance) {
+                bordadoChartInstance.destroy();
+            }
+
+            let entries = Object.entries(data).filter(([key, val]) => val.Pares > 0);
+            
+            entries.sort((a, b) => b[1].Pares - a[1].Pares);
+            entries = entries.slice(0, 15); 
+
+            const labels = entries.map(([key, val]) => `${key} (${val.Pares.toLocaleString('es-MX')})`);
+            const paresData = entries.map(([key, val]) => val.Pares);
+            
+            // Generación de colores aleatorios para Bordado
+            const colors = labels.map(() => `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.8)`);
+
+            const ctx = document.getElementById('bordadoChart').getContext('2d');
+            bordadoChartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: paresData,
+                        backgroundColor: colors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: false, 
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'right',
+                            labels: {
+                                boxWidth: 20,
+                                font: { size: 10 }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Pares por Bordado (Top 15 Acumulados)'
+                        },
+                        tooltip: {
+                             callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label = label.substring(0, label.lastIndexOf(' ('));
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                        label += context.parsed.toLocaleString('es-MX') + ` pares (${percentage}%)`;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const key = entries[index][0];
+                            const detailRows = entries[index][1].DetailRows;
+                            showDetailModal(`Bordado: ${key}`, detailRows);
+                        }
+                    }
+                }
+            });
+        }
+        
+        
+        // *** FUNCIONES DE LLENADO DE TABLAS ***
+        function fillSummaryTable(tableId, dataObj, emptyMessage) {
+          const tbody = document.querySelector(`#${tableId} tbody`);
+          const tfoot = document.querySelector(`#${tableId} tfoot`);
+          tbody.innerHTML = "";
+          tfoot.innerHTML = ""; 
+
+          let granTotal = 0;
+          
+          if (Object.keys(dataObj).length === 0) {
+              tbody.innerHTML = `<tr><td colspan="2">${emptyMessage}</td></tr>`;
+              return;
+          }
+
+          Object.entries(dataObj).sort((a, b) => String(a[0]).localeCompare(String(b[0]))) 
+          .forEach(([key, val]) => {
+            const row = `<tr><td>${key}</td><td>${val.toLocaleString('es-MX')}</td></tr>`;
+            tbody.innerHTML += row;
+            granTotal += val;
+          });
+
+          const totalRow = `<tr class="grand-total-row"><td><b>Gran Total</b></td><td><b>${granTotal.toLocaleString('es-MX')}</b></td></tr>`;
+          tfoot.innerHTML = totalRow;
+        }
+
+        // Función para llenar la tabla matricial (Departamento x Tipo-Prod) - QUITANDO CEROS
+        function fillMatrixTable(tableId, matrixData, tipoProdSet, deptoSet, emptyMessage) {
+            const table = document.querySelector(`#${tableId}`);
+            const thead = table.querySelector(`thead`);
+            const tbody = table.querySelector(`tbody`);
+            thead.innerHTML = "";
+            tbody.innerHTML = "";
+
+            const allDeptos = [...deptoSet].sort();
+            const allTipoProds = [...tipoProdSet].sort();
+            
+            // Determinar qué columnas/filas son relevantes en el filtro actual
+            const activeTipoProds = allTipoProds.filter(tp => {
+                return Object.values(matrixData).some(deptoData => deptoData[tp] && deptoData[tp] > 0);
+            });
+            const activeDeptos = allDeptos.filter(depto => {
+                 return activeTipoProds.some(tp => matrixData[depto] && matrixData[depto][tp] && matrixData[depto][tp] > 0);
+            });
+            
+            if (activeDeptos.length === 0 || activeTipoProds.length === 0) {
+                const colspan = activeTipoProds.length > 0 ? activeTipoProds.length + 2 : 2;
+                thead.innerHTML = `<tr><th>Departamento / Tipo-Prod</th></tr>`;
+                tbody.innerHTML = `<tr><td colspan="${colspan}">${emptyMessage}</td></tr>`; 
+                return;
+            }
+            
+            let totalColumna = {};
+            let granTotalSuma = 0;
+            
+            // Crear encabezado
+            let headerRow = '<tr><th>Departamento / Tipo-Prod</th>';
+            activeTipoProds.forEach(tp => {
+                headerRow += `<th>${tp}</th>`;
+            });
+            headerRow += '<th>Total general</th></tr>'; 
+            thead.innerHTML = headerRow;
+
+            let bodyHtml = '';
+            
+            // Llenar cuerpo
+            activeDeptos.forEach(depto => {
+                let rowHtml = `<tr><td>${depto}</td>`;
+                let filaTotal = 0; 
+                
+                activeTipoProds.forEach(tp => {
+                    const pares = matrixData[depto] && matrixData[depto][tp] ? matrixData[depto][tp] : 0;
+                    
+                    // Mostrar vacío si es cero
+                    const displayPares = pares > 0 ? pares.toLocaleString('es-MX') : '';
+                    
+                    rowHtml += `<td>${displayPares}</td>`;
+                    filaTotal += pares;
+                    totalColumna[tp] = (totalColumna[tp] || 0) + pares;
+                });
+                
+                // Columna Total General por Departamento
+                rowHtml += `<td><b>${filaTotal.toLocaleString('es-MX')}</b></td>`; 
+                bodyHtml += rowHtml + '</tr>';
+                granTotalSuma += filaTotal;
+            });
+            tbody.innerHTML = bodyHtml;
+
+            // Agregar fila de Totales Generales (Pie de página)
+            let footerRow = `<tr class="grand-total-row"><td><b>Total general</b></td>`;
+            activeTipoProds.forEach(tp => {
+                footerRow += `<td><b>${totalColumna[tp].toLocaleString('es-MX')}</b></td>`; 
+            });
+            // Total de la esquina inferior derecha
+            footerRow += `<td><b>${granTotalSuma.toLocaleString('es-MX')}</b></td></tr>`;
+            tbody.innerHTML += footerRow;
+        }
+
+        // Función para llenar la tabla de Detalle/Reciente (Con Color)
+        function fillRecentTable(tableId, rows, isDetailMode, detailDepto) {
+          const tbody = document.querySelector(`#${tableId} tbody`);
+          const thead = document.querySelector(`#${tableId} thead`);
+          const h2 = document.querySelector(`#${tableId}`).previousElementSibling;
+          tbody.innerHTML = "";
+          
+          if (isDetailMode) {
+              h2.textContent = `📜 Detalle Agrupado por Lista/Bordado/Modelo (${detailDepto})`;
+          } else {
+              h2.textContent = "📜 Últimos 5 Registros Procesados";
+          }
+
+          // ENCABEZADO DE TABLA DE DETALLE (Lista)
+          thead.innerHTML = '<tr><th>Color</th><th>Lista</th><th>Bordado</th><th>Modelo</th><th>Departamento</th><th>Tipo-Prod</th><th>Pares (Suma)</th></tr>';
+
+          if (rows.length === 0) {
+             tbody.innerHTML = `<tr><td colspan="7">No se encontraron pares válidos para este detalle/filtro.</td></tr>`;
+             return;
+          }
+          
+          rows.forEach(row => {
+            const ColorSemaforo = row.ColorSemaforo || 'N/A';
+            const Lista = row.Lista || '';
+            const Bordado = row.Bordado || '';
+            const Modelo = row.Modelo || '';
+            const Departamento = row.Departamento || ''; 
+            const TipoProducto = row.TipoProducto || '';
+            const Pares = row.Pares !== undefined ? row.Pares : 0;
+            
+            const colorCode = TOC_COLORS[ColorSemaforo.toUpperCase()] || TOC_COLORS['N/A']; 
+            
+            const colorCircleHtml = `<div class="color-circle" style="background-color: ${colorCode};" title="${ColorSemaforo}"></div>`;
+            
+            const displayLista = Lista === 'N/A' || Lista === '' ? '' : Lista;
+            const displayBordado = Bordado === 'N/A' || Bordado === '' ? '' : Bordado;
+            const displayModelo = Modelo === 'N/A' || Modelo === '' ? '' : Modelo;
+
+
+            const r = `<tr>
+                           <td>${colorCircleHtml}</td>
+                           <td>${displayLista}</td>
+                           <td>${displayBordado}</td>
+                           <td>${displayModelo}</td>
+                           <td>${Departamento}</td>
+                           <td>${TipoProducto}</td>
+                           <td>${Pares.toLocaleString('es-MX')}</td>
+                       </tr>`;
+            tbody.innerHTML += r;
+          });
+        }
+        // *** FIN FUNCIONES DE LLENADO DE TABLAS ***
+
+        // *** MANEJO DE EVENTOS DEL MODAL ***
+        document.querySelector('.close').onclick = function() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+        window.onclick = function(event) {
+            if (event.target == document.getElementById('detailModal')) {
+                document.getElementById('detailModal').style.display = 'none';
+            }
+        }
+        // *** FIN MANEJO DE EVENTOS DEL MODAL ***
+
+        // Función de Exportación a Excel 
+        function exportToExcel() {
+            if (currentFilteredData.length === 0) {
+                alert("No hay datos filtrados para exportar a Excel.");
+                return;
+            }
+
+            const dataToExport = currentFilteredData.map(row => {
+                return {
+                    'Color Semáforo': row.ColorSemaforo || '',
+                    'Tipo Producto': row.TipoProducto || '',
+                    'Lote': row.Lote || '',
+                    'Departamento': row.Departamento || '',
+                    'Lista': row.Lista || '', 
+                    'Bordado': row.Bordado || '',
+                    'Modelo': row.Modelo || '',
+                    'Pares': row.Pares,
+                    '% Penetración': row["Porc Penetracion"] || ''
+                };
+            });
+            
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Datos Filtrados");
+            
+            const today = new Date();
+            const dateString = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+            XLSX.writeFile(wb, `Wip_FAC_Datos_${dateString}.xlsx`);
+        }
+        
+        // Función de Exportación a PDF (Genera imagen de todo el cuerpo y lo guarda en PDF)
+        document.getElementById('exportPdfButton').addEventListener('click', async function() {
+            const { jsPDF } = window.jspdf;
+            const element = document.body; 
+
+            // Ocultar controles de interacción (inputs y botones)
+            document.getElementById('loadingStatus').style.display = 'none';
+            document.getElementById('exportPdfButton').style.display = 'none';
+            document.getElementById('exportExcelButton').style.display = 'none'; 
+            
+            // Ocultar selects y crear un resumen de filtros seleccionados para el PDF
+            const filtersDiv = document.querySelector('.filters');
+            const selectedFilters = [];
+
+            filtersDiv.querySelectorAll('select[multiple]').forEach(select => {
+                const labelText = select.previousElementSibling.textContent.split('(')[0].trim();
+                const selectedOptions = Array.from(select.selectedOptions)
+                                            .map(option => option.textContent.split(' (')[0].trim());
+                if (selectedOptions.length > 0) {
+                    selectedFilters.push(`<strong>${labelText}:</strong> ${selectedOptions.join(', ')}`);
+                }
+                select.style.display = 'none';
+            });
+
+            const filterSummaryDiv = document.createElement('div');
+            filterSummaryDiv.innerHTML = `<h3>Filtros Aplicados:</h3><p>${selectedFilters.join(' | ')}</p>`;
+            filtersDiv.insertBefore(filterSummaryDiv, filtersDiv.firstChild.nextElementSibling);
+
+            
+            // Ajustar estilos de gráficos para exportación a columna simple en PDF
+            const chartContainer = document.getElementById('chartContainer');
+            const originalStyle = chartContainer.style.cssText;
+            chartContainer.style.flexDirection = 'column';
+            document.querySelectorAll('.chart-box').forEach(box => {
+                box.style.width = '100%'; 
+                box.style.minWidth = '300px';
+                box.style.height = 'auto'; 
+            }); 
+            
+            document.querySelectorAll('.chart-box canvas').forEach(canvas => {
+                canvas.style.maxWidth = '450px';
+                canvas.style.maxHeight = '450px';
+                canvas.style.width = '450px';
+                canvas.style.height = '450px';
+            });
+            
+            // Capturar el cuerpo del documento como imagen
+            html2canvas(element, {
+                scale: 2, 
+                useCORS: true 
+            }).then(canvas => {
+                
+                // RESTAURAR ESTILOS ORIGINALES después de la captura
+                chartContainer.style.cssText = originalStyle; 
+                document.querySelectorAll('.chart-box').forEach(box => {
+                    box.style.width = '472px';
+                    box.style.height = '520px';
+                }); 
+                
+                document.querySelectorAll('.chart-box canvas').forEach(canvas => {
+                    canvas.style.maxWidth = '450px';
+                    canvas.style.maxHeight = '450px';
+                    canvas.style.width = '450px';
+                    canvas.style.height = '450px';
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                
+                const pdf = new jsPDF('p', 'mm', 'letter'); 
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeightTotal = (imgProps.height * pdfWidth) / imgProps.width;
+                
+                let heightPrinted = 0;
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                
+                // Lógica de paginación para contenido largo
+                if (pdfHeightTotal < pageHeight) {
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeightTotal);
+                } else {
+                    while (heightPrinted < pdfHeightTotal) {
+                        const overlap = 5; 
+                        const canvasFragmentHeight = Math.min(pageHeight + overlap, pdfHeightTotal - heightPrinted);
+
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = canvas.width;
+                        tempCanvas.height = canvasFragmentHeight * canvas.height / pdfHeightTotal;
+                        
+                        const tempCtx = tempCanvas.getContext('2d');
+                        tempCtx.drawImage(canvas, 
+                                        0, (heightPrinted / pdfHeightTotal) * canvas.height, 
+                                        canvas.width, tempCanvas.height * (pdfHeightTotal / canvasFragmentHeight), 
+                                        0, 0,
+                                        tempCanvas.width, tempCanvas.height);
+                        
+                        const tempImgData = tempCanvas.toDataURL('image/png');
+
+                        if (heightPrinted !== 0) {
+                            pdf.addPage();
+                        }
+                        pdf.addImage(tempImgData, 'PNG', 0, heightPrinted === 0 ? 0 : -overlap * pdfWidth / canvas.width, pdfWidth, pageHeight + (heightPrinted === 0 ? 0 : overlap * pdfWidth / canvas.width));
+                        heightPrinted += pageHeight;
+                    }
+                }
+                
+                pdf.save("Wip_FAC_Reporte_Direccion.pdf");
+
+                // RESTAURAR ELEMENTOS DE CONTROL VISIBLES
+                document.getElementById('loadingStatus').style.display = 'block';
+                document.getElementById('exportPdfButton').style.display = 'block';
+                document.getElementById('exportExcelButton').style.display = 'block'; 
+                
+                filtersDiv.querySelectorAll('select').forEach(select => select.style.display = 'block');
+                if (filterSummaryDiv.parentNode === filtersDiv) {
+                    filtersDiv.removeChild(filterSummaryDiv);
+                }
+            });
+        });
+
+        document.getElementById('exportExcelButton').addEventListener('click', exportToExcel);
+
+
+        // Event listeners para los filtros
+        document.querySelectorAll("select").forEach(sel => {
+          sel.addEventListener("change", () => renderTables(allData));
+        });
+    </script>
+</body>
+</html>
